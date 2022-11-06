@@ -1,8 +1,7 @@
 // version: 2
 // deno-lint-ignore-file no-explicit-any
-import * as path from "https://deno.land/std@0.135.0/path/mod.ts";
-// @deno-types="https://deno.land/x/dayjs@v1.10.7/types/index.d.ts"
-import { default as dayjs } from "https://cdn.skypack.dev/dayjs@1.10.7?dts";
+import * as Path from "https://deno.land/std@0.162.0/path/mod.ts";
+import Day from "npm:dayjs@1.11.6";
 
 const headerPrefix = `╔════ `;
 const middlePrefix = `║ `;
@@ -62,7 +61,7 @@ for (const k in output) {
 }
 
 const rootFolder = "./";
-const rootFolderToLogs = path.join(rootFolder, "logs");
+const rootFolderToLogs = Path.join(rootFolder, "logs");
 
 const folderDateFormat = "DD-MMM-YYYY";
 
@@ -164,11 +163,11 @@ export class Log<Values = Record<string, unknown>> {
 		// Get folder structure
 		const folders = filePath.split("/");
 		const fileName = folders.pop();
-		const file = path.extname(fileName ?? "").length == 0
+		const file = Path.extname(fileName ?? "").length == 0
 			? `${fileName}.log`
 			: fileName ?? "unknown";
 
-		this._logFileDate = dayjs().format(folderDateFormat); // Make sure initialize after updateDate() so the log file is created
+		this._logFileDate = Day().format(folderDateFormat); // Make sure initialize after updateDate() so the log file is created
 
 		this.relativePath = [...folders, file];
 
@@ -222,13 +221,13 @@ export class Log<Values = Record<string, unknown>> {
 	 * Updates the folder where the log will be stored and creates it if it doesn't exist
 	 */
 	protected readonly getLog = async () => {
-		const date = dayjs().format(folderDateFormat);
+		const date = Day().format(folderDateFormat);
 		if (this._logFile && this._logFileDate === date) return this._logFile; // no need to update
 
 		this._logFile?.close(); // close old log file
 		this._logFileDate = date; // update date
 		const absPath = this.absolutePath; // get absolute path
-		await Deno.mkdir(absPath.split(path.basename(absPath))[0], {
+		await Deno.mkdir(absPath.split(Path.basename(absPath))[0], {
 			recursive: true,
 		}); // create folder if it doesn't exist
 		this._logFile = await Deno.open(absPath, {
@@ -246,7 +245,7 @@ export class Log<Values = Record<string, unknown>> {
 		getLine = 0,
 	) => {
 		try {
-			const date = dayjs();
+			const date = Day();
 			const file = getFileCode(getLine + 1); // get function file from stack trace
 
 			const relativePath = this.relativePathString;
@@ -285,7 +284,7 @@ export class Log<Values = Record<string, unknown>> {
 	};
 
 	public get absolutePath() {
-		return path.resolve(
+		return Path.resolve(
 			rootFolderToLogs,
 			this._logFileDate,
 			...this.relativePath,
@@ -293,7 +292,7 @@ export class Log<Values = Record<string, unknown>> {
 	}
 	public readonly relativePath: string[];
 	public get relativePathString() {
-		return this.relativePath.join(path.sep);
+		return this.relativePath.join(Path.sep);
 	}
 
 	public readonly highlight = highlight;
@@ -337,8 +336,8 @@ export function custom(
 		for (let i = 0; i < message.length; i++) {
 			const msg = (message as string[])[i];
 			if (
-				i == 0 || msg.includes(path.join(rootFolder, "src")) ||
-				msg.includes(path.join(rootFolder, "dist"))
+				i == 0 || msg.includes(Path.join(rootFolder, "src")) ||
+				msg.includes(Path.join(rootFolder, "dist"))
 			) {
 				message[i] = colorString(msg, [
 					terminalColor.background.red,
@@ -442,7 +441,7 @@ function getFileCode(getLine: number) {
 				"/",
 			);
 		const fileNoExt = filePath
-			.replace(path.extname(filePath), "")
+			.replace(Path.extname(filePath), "")
 			.replace(/\\/g, "/");
 		return `[${fileNoExt}:${lineNumber}]`;
 	} catch (_) {
