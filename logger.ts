@@ -50,7 +50,7 @@ const output = {
 		),
 };
 
-export const outputOnLog = <typeof output> {};
+export const outputOnLog = <typeof output>{};
 for (const k in output) {
 	if (Object.prototype.hasOwnProperty.call(output, k)) {
 		const key = k as keyof typeof output;
@@ -99,7 +99,7 @@ export class Log<Values = Record<string, unknown>> {
 	private _logFile: Deno.FsFile | undefined;
 	private _logFileDate: string;
 
-	private readonly _values: Values = <any> {};
+	private readonly _values: Values = <any>{};
 	/**
 	 * Log values here are useful for debugging.
 	 * You can manually display them by calling {@link valuesLog} function,
@@ -178,43 +178,24 @@ export class Log<Values = Record<string, unknown>> {
 		this.getLog(); // Create log file
 	}
 
-	public readonly debug = (message: MessageLog) =>
-		this.createNewLog("debug", message, [terminalColor.foreground.cyan], 2);
-	public readonly info = (message: MessageLog) =>
-		this.createNewLog("info", message, [terminalColor.foreground.green], 2);
-	public readonly warn = (message: MessageLog) =>
-		this.createNewLog(
-			"warn",
-			message,
-			[terminalColor.foreground.yellow],
-			2,
-		);
-	public readonly error = (message: MessageLog) =>
-		this.createNewLog("error", message, [terminalColor.foreground.red], 2);
+	public readonly debug = (message: MessageLog, ...args: string[]) =>
+		this.createNewLog("debug", message, args, [terminalColor.foreground.cyan], 2);
+	public readonly info = (message: MessageLog, ...args: string[]) =>
+		this.createNewLog("info", message, args, [terminalColor.foreground.green], 2);
+	public readonly warn = (message: MessageLog, ...args: string[]) =>
+		this.createNewLog("warn", message, args, [terminalColor.foreground.yellow], 2);
+	public readonly error = (message: MessageLog, ...args: string[]) =>
+		this.createNewLog("error", message, args, [terminalColor.foreground.red], 2);
 
 	/**
 	 * Displays the values in the console
 	 */
 	public readonly valuesLog = () => {
 		const color = terminalColor.foreground.magenta;
-		console.log(
-			color + middlePrefix +
-				`[VALUES] ${
-					colorString(`[${this.relativePathString}]`, [
-						terminalColor.foreground.cyan,
-					])
-				}`,
-		);
+		console.log(color + middlePrefix + `[VALUES] ${colorString(`[${this.relativePathString}]`, [terminalColor.foreground.cyan])}`);
 		Deno.inspect(this.values, { colors: true }).split("\n")
 			.forEach((line) => console.log(color + middlePrefix + `${line}`));
-		console.log(
-			color + footerPrefix +
-				`[END OF VALUES] ${
-					colorString(`[${this.relativePathString}]`, [
-						terminalColor.foreground.cyan,
-					])
-				}`,
-		);
+		console.log(color + footerPrefix + `[END OF VALUES] ${colorString(`[${this.relativePathString}]`, [terminalColor.foreground.cyan])}`);
 	};
 
 	/**
@@ -240,7 +221,8 @@ export class Log<Values = Record<string, unknown>> {
 	/** Display log file and save to the log file */
 	protected readonly createNewLog = async (
 		type: keyof typeof output,
-		content: MessageLog,
+		message: MessageLog,
+		args: string[],
 		colors: TerminalColor[],
 		getLine = 0,
 	) => {
@@ -249,6 +231,10 @@ export class Log<Values = Record<string, unknown>> {
 			const file = getFileCode(getLine + 1); // get function file from stack trace
 
 			const relativePath = this.relativePathString;
+
+			// Place arguments to %s for arguments in message
+			let content = message;
+			content?.replace && args.forEach(v => content = content.replace("%s", v));
 
 			// Display data
 			if (this.shouldConsoleLog) {
@@ -268,11 +254,7 @@ export class Log<Values = Record<string, unknown>> {
 				// Setup text
 				const text =
 					`[${timestamp}] [${type.toUpperCase()}] ${file} ${content}\n` +
-					(type == "error"
-						? `[${timestamp}] ↦ ${
-							Deno.inspect(this._values, { colors: true })
-						}\n`
-						: "");
+					(type == "error" ? `[${timestamp}] ↦ ${Deno.inspect(this._values, { colors: true })}\n` : "");
 
 				const log = await this.getLog();
 				await log.write(new TextEncoder().encode(text));
@@ -353,8 +335,8 @@ export function custom(
 	message = isObject(message) || Array.isArray(message)
 		? Deno.inspect(message, { depth: 5, colors: true })
 		: message !== undefined
-		? message !== null ? message.toString() : "null"
-		: "undefined";
+			? message !== null ? message.toString() : "null"
+			: "undefined";
 	while (message.includes(terminalColor.special.normal)) {
 		message = message.replace(
 			terminalColor.special.normal,
@@ -408,7 +390,7 @@ export function custom(
 	}
 	(isError ? console.error : console.log)(
 		colorString(shouldMiddlePrefix ? middlePrefix : "", colors) +
-			`${colorString(file, fileColor)} ${colorString(message, colors)}`,
+		`${colorString(file, fileColor)} ${colorString(message, colors)}`,
 	);
 	return null;
 }
