@@ -1,7 +1,7 @@
 // version: 2
 // deno-lint-ignore-file no-explicit-any
 import * as Path from "https://deno.land/std@0.162.0/path/mod.ts";
-import Day from "npm:dayjs@1.11.6";
+import Day from "https://esm.sh/dayjs@1.11.6";
 
 const headerPrefix = `╔════ `;
 const middlePrefix = `║ `;
