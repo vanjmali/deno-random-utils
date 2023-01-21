@@ -1,7 +1,7 @@
 // version: 2
 // deno-lint-ignore-file no-explicit-any
-import * as Path from "https://deno.land/std@0.162.0/path/mod.ts";
-import Day from "https://esm.sh/dayjs@1.11.6";
+import * as Path from "https://deno.land/std@0.171.0/path/mod.ts";
+import Day from "https://esm.sh/dayjs@1.11.7";
 
 const headerPrefix = `╔════ `;
 const middlePrefix = `║ `;
@@ -60,7 +60,7 @@ for (const k in output) {
 	}
 }
 
-const rootFolder = "./";
+const rootFolder = Deno.cwd();
 const rootFolderToLogs = Path.join(rootFolder, "logs");
 
 const folderDateFormat = "DD-MMM-YYYY";
@@ -68,10 +68,12 @@ const folderDateFormat = "DD-MMM-YYYY";
 type LogOptions<T> = {
 	/**
 	 * Should display log in the console
+	 * @default true
 	 */
 	shouldConsoleLog?: boolean;
 	/**
 	 * Should save log in `logs` folder
+	 * @default true
 	 */
 	shouldSaveConsole?: boolean;
 	/**
@@ -96,7 +98,7 @@ export class Log<Values = Record<string, unknown>> {
 	public static readonly warn = output.warn;
 	public static readonly error = output.error;
 
-	private _logFile: Deno.FsFile | undefined;
+	private _logFile: Deno.FsFile | null = null;
 	private _logFileDate: string;
 
 	private readonly _values: Values = <any>{};
@@ -110,7 +112,7 @@ export class Log<Values = Record<string, unknown>> {
 	 *
 	 * To be up-to-date, you can assign the type when calling this class:
 	 * ```typescript
-	 * import { Log } from 'deps';
+	 * import { Log } from 'https://deno.land/x/random_utils@v0.1.0/logger.ts';
 	 * const log = new Log<{
 	 *     x: number, // becomes `log.values.x`. There is no undefined-checking here, so try adding `| undefined` or `?:` if you want to use it
 	 *     y: number
@@ -162,10 +164,8 @@ export class Log<Values = Record<string, unknown>> {
 		}
 		// Get folder structure
 		const folders = filePath.split("/");
-		const fileName = folders.pop();
-		const file = Path.extname(fileName ?? "").length == 0
-			? `${fileName}.log`
-			: fileName ?? "unknown";
+		const fileName = folders.pop() ?? `unknown-${crypto.randomUUID()}.log`;
+		const file = fileName.endsWith(".log") ? fileName : `${fileName}.log`;
 
 		this._logFileDate = Day().format(folderDateFormat); // Make sure initialize after updateDate() so the log file is created
 
@@ -174,38 +174,77 @@ export class Log<Values = Record<string, unknown>> {
 		this.shouldConsoleLog = options?.shouldConsoleLog ?? true;
 		this.shouldSaveConsole = options?.shouldSaveConsole ?? true;
 		if (options?.initValues) this.values = options.initValues;
-
-		this.getLog(); // Create log file
 	}
 
 	public readonly debug = (message: MessageLog, ...args: string[]) =>
-		this.createNewLog("debug", message, args, [terminalColor.foreground.cyan], 2);
+		this.createNewLog(
+			"debug",
+			message,
+			args,
+			[terminalColor.foreground.cyan],
+			2,
+		);
 	public readonly info = (message: MessageLog, ...args: string[]) =>
-		this.createNewLog("info", message, args, [terminalColor.foreground.green], 2);
+		this.createNewLog(
+			"info",
+			message,
+			args,
+			[terminalColor.foreground.green],
+			2,
+		);
 	public readonly warn = (message: MessageLog, ...args: string[]) =>
-		this.createNewLog("warn", message, args, [terminalColor.foreground.yellow], 2);
+		this.createNewLog(
+			"warn",
+			message,
+			args,
+			[terminalColor.foreground.yellow],
+			2,
+		);
 	public readonly error = (message: MessageLog, ...args: string[]) =>
-		this.createNewLog("error", message, args, [terminalColor.foreground.red], 2);
+		this.createNewLog(
+			"error",
+			message,
+			args,
+			[terminalColor.foreground.red],
+			2,
+		);
 
 	/**
 	 * Displays the values in the console
 	 */
 	public readonly valuesLog = () => {
 		const color = terminalColor.foreground.magenta;
-		console.log(color + middlePrefix + `[VALUES] ${colorString(`[${this.relativePathString}]`, [terminalColor.foreground.cyan])}`);
+		console.log(
+			color + middlePrefix +
+			`[VALUES] ${colorString(`[${this.relativePathString}]`, [
+				terminalColor.foreground.cyan,
+			])
+			}`,
+		);
 		Deno.inspect(this.values, { colors: true }).split("\n")
 			.forEach((line) => console.log(color + middlePrefix + `${line}`));
-		console.log(color + footerPrefix + `[END OF VALUES] ${colorString(`[${this.relativePathString}]`, [terminalColor.foreground.cyan])}`);
+		console.log(
+			color + footerPrefix +
+			`[END OF VALUES] ${colorString(`[${this.relativePathString}]`, [
+				terminalColor.foreground.cyan,
+			])
+			}`,
+		);
 	};
+
+	private readonly _logDataQueue: Uint8Array[] = [];
 
 	/**
 	 * Updates the folder where the log will be stored and creates it if it doesn't exist
 	 */
-	protected readonly getLog = async () => {
+	protected readonly writeLog = async (data: Uint8Array) => {
 		const date = Day().format(folderDateFormat);
-		if (this._logFile && this._logFileDate === date) return this._logFile; // no need to update
+		this._logDataQueue.push(data);
+		if (this._logFile) {
+			// If there is a log file, return as it is already being written to
+			return;
+		}
 
-		this._logFile?.close(); // close old log file
 		this._logFileDate = date; // update date
 		const absPath = this.absolutePath; // get absolute path
 		await Deno.mkdir(absPath.split(Path.basename(absPath))[0], {
@@ -215,7 +254,11 @@ export class Log<Values = Record<string, unknown>> {
 			create: true,
 			append: true,
 		}); // open file
-		return this._logFile;
+		for (const data of this._logDataQueue) {
+			await this._logFile.write(data); // write data
+		}
+		this._logFile.close(); // close file
+		this._logFile = null;
 	};
 
 	/** Display log file and save to the log file */
@@ -234,7 +277,8 @@ export class Log<Values = Record<string, unknown>> {
 
 			// Place arguments to %s for arguments in message
 			let content = message;
-			content?.replace && args.forEach(v => content = content.replace("%s", v));
+			content?.replace &&
+				args.forEach((v) => content = content.replace("%s", v));
 
 			// Display data
 			if (this.shouldConsoleLog) {
@@ -254,10 +298,12 @@ export class Log<Values = Record<string, unknown>> {
 				// Setup text
 				const text =
 					`[${timestamp}] [${type.toUpperCase()}] ${file} ${content}\n` +
-					(type == "error" ? `[${timestamp}] ↦ ${Deno.inspect(this._values, { colors: true })}\n` : "");
+					(type == "error"
+						? `[${timestamp}] ↦ ${Deno.inspect(this._values, { colors: true })
+						}\n`
+						: "");
 
-				const log = await this.getLog();
-				await log.write(new TextEncoder().encode(text));
+				await this.writeLog(new TextEncoder().encode(text));
 			}
 		} catch (e) {
 			console.error(e);
@@ -417,15 +463,13 @@ function getFileCode(getLine: number) {
 		const lineNumber = frame.split(":").reverse()[1];
 		// const functionName = frame!.split(" ")[5];
 		const filePathFrame = frame.split(":").reverse();
-		const filePath = (filePathFrame.length < 2
-			? filePathFrame[filePathFrame.length]
-			: filePathFrame[2]).split("/").reverse().slice(0, 2).reverse().join(
-				"/",
-			);
-		const fileNoExt = filePath
-			.replace(Path.extname(filePath), "")
-			.replace(/\\/g, "/");
-		return `[${fileNoExt}:${lineNumber}]`;
+		const filePath = (
+			filePathFrame.length < 2
+				? filePathFrame[filePathFrame.length]
+				: filePathFrame[2])
+			.replace(/\\/g, "/").replace(rootFolder, "")
+			.split("/").filter(v => v.length > 0).reverse().slice(0, 2).reverse().join("/");
+		return `[${filePath}:${lineNumber}]`;
 	} catch (_) {
 		return "[unknown]";
 	}
