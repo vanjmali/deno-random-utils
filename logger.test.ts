@@ -16,7 +16,9 @@ Deno.test("Logger", async t => {
 
 	await t.step("Logger instance", async t => {
 		await t.step(t.name + " (default)", async () => {
-			const log = new Logger("test");
+			const log = new Logger("test", {
+				fileTimeout: 0
+			});
 
 			await log.info("Hello World");
 
@@ -32,7 +34,8 @@ Deno.test("Logger", async t => {
 			const log = new Logger("test", {
 				initValues: {
 					"some_value": "test"
-				}
+				},
+				fileTimeout: 0
 			});
 
 			await log.error("Hello World");
@@ -51,15 +54,35 @@ Deno.test("Logger", async t => {
 			Deno.remove("./logs", { recursive: true });
 
 			const log = new Logger("test", {
-				initValues: {},
-				shouldSaveConsole: false
+				shouldSaveConsole: false,
+				fileTimeout: 0
 			});
 
 			await log.info("Hello World");
 
 			Test.assertEquals(await Deno.stat(log.absolutePath).then(() => true).catch(() => false), false);
 		});
+
+		await t.step("File Timeout for inactivity", async () => {
+			const timer = 50;
+			const log = new Logger("test", {
+				fileTimeout: timer
+			});
+
+			await log.info("Hello World");
+			await new Promise(resolve => setTimeout(resolve, timer));
+		});
+
+		await t.step("File Timeout for inactivity (no save)", async () => {
+			const timer = 50;
+			const log = new Logger("test", {
+				shouldSaveConsole: false,
+				fileTimeout: timer
+			});
+
+			await log.info("Hello World");
+		});
 	}).finally(() => {
-		// Deno.remove("./logs", { recursive: true });
+		Deno.remove("./logs", { recursive: true });
 	});
 });

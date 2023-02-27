@@ -1,7 +1,7 @@
 // version: 2
 // deno-lint-ignore-file no-explicit-any
-import * as Path from "https://deno.land/std@0.171.0/path/mod.ts";
-import Day from "https://esm.sh/dayjs@1.11.7";
+import * as Path from "https://deno.land/std@0.178.0/path/mod.ts";
+import Day from "npm:dayjs";
 
 const headerPrefix = `╔════ `;
 const middlePrefix = `║ `;
@@ -78,8 +78,18 @@ type LogOptions<T> = {
 	shouldSaveConsole?: boolean;
 	/**
 	 * The start log values to initialize with.
+	 * @default {}
 	 */
-	initValues: T;
+	initValues?: T;
+	/**
+	 * The timeout in milliseconds to save the log file.
+	 * 
+	 * This is useful for when you want to log multiple messages at once, and you don't want to save the file multiple times.
+	 * 
+	 * Setting this to 0 will close the file after each log, no open connections will be kept.
+	 * @default 5000
+	 */
+	fileTimeout?: number;
 };
 
 /**
@@ -99,6 +109,8 @@ export class Log<Values = Record<string, unknown>> {
 	public static readonly error = output.error;
 
 	private _logFile: Deno.FsFile | null = null;
+	private _logFileTimeout: number | null = null;
+	private _logFileTaken = false;
 	private _logFileDate: string;
 
 	private readonly _values: Values = <any>{};
@@ -139,8 +151,14 @@ export class Log<Values = Record<string, unknown>> {
 	public get values() {
 		return this._values;
 	}
-	public shouldConsoleLog: LogOptions<Values>["shouldConsoleLog"] = true;
-	public shouldSaveConsole: LogOptions<Values>["shouldSaveConsole"] = true;
+	public shouldConsoleLog: Required<LogOptions<Values>["shouldConsoleLog"]>;
+	public shouldSaveConsole: Required<LogOptions<Values>["shouldSaveConsole"]>;
+	/**
+	 * The timeout in milliseconds to save the log file.
+	 * 
+	 * Changing this value will affect the future logs.
+	 */
+	public fileTimeout: Required<LogOptions<Values>["fileTimeout"]>;
 
 	/**
 	 * This class allows you to organize logging, by creating file structures in logs folder.
@@ -173,7 +191,8 @@ export class Log<Values = Record<string, unknown>> {
 
 		this.shouldConsoleLog = options?.shouldConsoleLog ?? true;
 		this.shouldSaveConsole = options?.shouldSaveConsole ?? true;
-		if (options?.initValues) this.values = options.initValues;
+		this.fileTimeout = options?.fileTimeout ?? 5000;
+		this.values = options?.initValues ?? <Values>{};
 	}
 
 	public readonly debug = (message: MessageLog, ...args: string[]) =>
@@ -216,19 +235,13 @@ export class Log<Values = Record<string, unknown>> {
 		const color = terminalColor.foreground.magenta;
 		console.log(
 			color + middlePrefix +
-			`[VALUES] ${colorString(`[${this.relativePathString}]`, [
-				terminalColor.foreground.cyan,
-			])
-			}`,
+			`[VALUES] ${colorString(`[${this.relativePathString}]`, [terminalColor.foreground.cyan])}`,
 		);
 		Deno.inspect(this.values, { colors: true }).split("\n")
 			.forEach((line) => console.log(color + middlePrefix + `${line}`));
 		console.log(
 			color + footerPrefix +
-			`[END OF VALUES] ${colorString(`[${this.relativePathString}]`, [
-				terminalColor.foreground.cyan,
-			])
-			}`,
+			`[END OF VALUES] ${colorString(`[${this.relativePathString}]`, [terminalColor.foreground.cyan])}`,
 		);
 	};
 
@@ -240,25 +253,51 @@ export class Log<Values = Record<string, unknown>> {
 	protected readonly writeLog = async (data: Uint8Array) => {
 		const date = Day().format(folderDateFormat);
 		this._logDataQueue.push(data);
-		if (this._logFile) {
+		if (this._logFileTaken) {
 			// If there is a log file, return as it is already being written to
 			return;
 		}
 
-		this._logFileDate = date; // update date
-		const absPath = this.absolutePath; // get absolute path
-		await Deno.mkdir(absPath.split(Path.basename(absPath))[0], {
-			recursive: true,
-		}); // create folder if it doesn't exist
-		this._logFile = await Deno.open(absPath, {
-			create: true,
-			append: true,
-		}); // open file
-		for (const data of this._logDataQueue) {
-			await this._logFile.write(data); // write data
+		if (!this._logFile || this._logFileDate !== date) {
+			this._logFileDate = date; // update date
+			this.closeLogs(); // close old logs
+
+			const absPath = this.absolutePath;
+			// open file in append mode to just insert data
+			await Deno.mkdir(absPath.split(Path.basename(absPath))[0], { recursive: true });
+			this._logFile = await Deno.open(absPath, {
+				create: true,
+				append: true
+			});
+
+			// Set timeout to close the file after inactivity
+			this._logFileTimeout = this.fileTimeout ?? 0 > 0
+				? setTimeout(this.closeLogs, this.fileTimeout)
+				: null;
 		}
-		this._logFile.close(); // close file
-		this._logFile = null;
+
+		// Log file is being written to
+		for (const data of this._logDataQueue) {
+			await this._logFile.write(data);
+		}
+		this._logFileTaken = false;
+		if (!this._logFileTimeout) this.closeLogs();
+	};
+
+	/**
+	 * Closes the log file if open.
+	 * This is called automatically after {@link fileTimeout} miliseconds of inactivity
+	 * 
+	 * Manually call this function to close the log file
+	 */
+	public readonly closeLogs = () => {
+		if (this._logFile) {
+			// close old file if it exists
+			this._logFile.close();
+			this._logFile = null;
+			this._logFileTimeout && clearTimeout(this._logFileTimeout);
+			this._logFileTimeout = null;
+		}
 	};
 
 	/** Display log file and save to the log file */
@@ -299,8 +338,7 @@ export class Log<Values = Record<string, unknown>> {
 				const text =
 					`[${timestamp}] [${type.toUpperCase()}] ${file} ${content}\n` +
 					(type == "error"
-						? `[${timestamp}] ↦ ${Deno.inspect(this._values, { colors: true })
-						}\n`
+						? `[${timestamp}] ↦ ${Deno.inspect(this._values, { colors: true })}\n`
 						: "");
 
 				await this.writeLog(new TextEncoder().encode(text));
