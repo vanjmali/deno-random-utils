@@ -4,5 +4,6 @@
 			"useTabs": true,
 			"indentWidth": 4
 		}
-	}
+	},
+	"lock": false
 }
