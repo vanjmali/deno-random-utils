@@ -280,6 +280,7 @@ export class Log<Values = Record<string, unknown>> {
 		for (const data of this._logDataQueue) {
 			await this._logFile.write(data);
 		}
+		this._logDataQueue.length = 0;
 		this._logFileTaken = false;
 		if (!this._logFileTimeout) this.closeLogs();
 	};
