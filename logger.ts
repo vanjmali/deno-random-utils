@@ -63,7 +63,7 @@ for (const k in output) {
 const rootFolder = Deno.cwd();
 const rootFolderToLogs = Path.join(rootFolder, "logs");
 
-const folderDateFormat = "DD-MMM-YYYY";
+const folderDateFormat = "YYYY-MM-DD";
 
 type LogOptions<T> = {
 	/**
